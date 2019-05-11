@@ -12,6 +12,7 @@ import (
 var envListen = stringResolve("LISTEN_ADDR", ":8080")
 var envIqdbAddr = stringResolve("IQDB_ADDR", "iqdb:5566")
 var envServiceName = stringResolve("SERVICE_NAME", "iibooru")
+var envTreshold = stringResolve("MATCH_TRESHOLD", "60")
 var splitter *regexp.Regexp
 
 func init() {
@@ -32,24 +33,52 @@ func iqdbHandler(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(err.Error()))
 		return
 	}
+	var bss []byte
 	h, ok := r.MultipartForm.File["file"]
 	if !ok || len(h) != 1 {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		if url, ok := r.MultipartForm.Value["url"]; !ok || len(url) != 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		} else {
+			req, err := http.NewRequest("GET", url[0], nil)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(err.Error()))
+				return
+			}
+			body, err := req.GetBody()
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(err.Error()))
+				return
+			}
+			bs, err := ioutil.ReadAll(body)
+			defer func() {
+				_ = body.Close()
+			}()
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(err.Error()))
+				return
+			}
+			bss = bs
+		}
+	} else {
+		f, err := h[0].Open()
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(err.Error()))
+			return
+		}
+		bs, err := ioutil.ReadAll(f)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(err.Error()))
+			return
+		}
+		bss = bs
 	}
-	f, err := h[0].Open()
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(err.Error()))
-		return
-	}
-	bs, err := ioutil.ReadAll(f)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(err.Error()))
-		return
-	}
-	res, err := QueryData(envIqdbAddr, "0", 0, 10, bs)
+	res, err := QueryData(envIqdbAddr, "0", 0, 10, bss)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(err.Error()))
@@ -61,7 +90,7 @@ func iqdbHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("content-type", "application/xml; charset=utf-8")
-	_, _ = w.Write([]byte(fmt.Sprintf("<?xml version='1.0' encoding='UTF-8'?>\n<matches threshold='70'>\n%s</matches>", matches)))
+	_, _ = w.Write([]byte(fmt.Sprintf("<?xml version='1.0' encoding='UTF-8'?>\n<matches threshold='%s'>\n%s</matches>", envTreshold, matches)))
 }
 
 func main() {
