@@ -40,21 +40,16 @@ func iqdbHandler(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		} else {
-			req, err := http.NewRequest("GET", url[0], nil)
+			resp, err := http.Get(url[0])
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				_, _ = w.Write([]byte(err.Error()))
 				return
 			}
-			body, err := req.GetBody()
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				_, _ = w.Write([]byte(err.Error()))
-				return
-			}
-			bs, err := ioutil.ReadAll(body)
+
+			bs, err := ioutil.ReadAll(resp.Body)
 			defer func() {
-				_ = body.Close()
+				_ = resp.Body.Close()
 			}()
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
